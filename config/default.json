@@ -1,11 +1,13 @@
-   {
-       "proxy": "sip:[XXXXX]:[XXXX]",
-       "outbound_proxy": "sip:[XXXXX]:[XXXX]",
-       "request": "register",
-       "username": "sip:[USER]@[DOMAIN]",
-       "secret": "[XXXX]",
-       "authuser": "[XXXX]",
-       "displayname": "Bob",
-       "sips": false
-   }
-   
+{
+    "register": {
+        "proxy": "sip:[domain]:[port]",
+        "outbound_proxy": "sip:[domain]:[port]",
+        "request": "register",
+        "username": "sip:[user]@[domain]",
+        "secret": "[secret]",
+        "authuser": "[user]",
+        "displayname": "Bob",
+        "sips": false
+    },
+    "uri": "sip:[user to call]@[domain]:[port]"
+}

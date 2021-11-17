@@ -100,7 +100,7 @@ class JanusSession:
         
         # send offer
         await self.pc.setLocalDescription(await self.pc.createOffer())
-        request = {"request": "call","uri":"sip:1004@omni3.apimobile.com:35060"}
+        request = {"request": "call","uri":cfg["uri"]}
         request.update(media)
         print(LINE(),"----------> UPDATE MEDIA", media)
         response = await plugin.send(
@@ -129,17 +129,7 @@ class JanusSession:
 #        print(LINE(),"register *******")
         response = await plugin.send(
             {
-                "body": {
-                    "proxy" : "sip:omni3.apimobile.com:35060",
-                    "server":"sip:omni3.apimobile.com:35060",
-                    "request": "register",
-                    "sipserver": "sip:omni3.apimobile.com:35060",
-                    "username": "sip:1007@omni3.apimobile.com",
-                    "secret": "00123400",
-                    "authuser": "1007",
-                    "displayname" : "Bob",
-                    "sips" : False
-                }
+                "body": cfg["register"]
             }
         )
         return response

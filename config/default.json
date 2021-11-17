@@ -1,0 +1,11 @@
+   {
+       "proxy": "sip:omni3.apimobile.com:35060",
+       "outbound_proxy": "sip:omni3.apimobile.com:35060",
+       "request": "register",
+       "username": "sip:1007@omni3.apimobile.com",
+       "secret": "00123400",
+       "authuser": "1007",
+       "displayname": "Bob",
+       "sips": false
+   }
+   

@@ -23,10 +23,8 @@ with open("config/default.json", "r") as jsonfile:
     
 print(LINE(),"config --->",json.dumps(cfg, indent=4))    
 
-
 def transaction_id():
     return "".join(random.choice(string.ascii_letters) for x in range(12))
-
 
 class JanusPlugin:
     def __init__(self, session, url):
@@ -72,7 +70,13 @@ class JanusSession:
             return plugin
 
     async def call(self,plugin):
-#        print(LINE(),"call *******",player)
+        self.direction = "OUTBOUND"
+        
+        print(LINE(),"play MediaFile", self.playFile)
+        self.player = MediaPlayer(self.playFile)
+        print(LINE(),"record MediaFile", self.recordFile)
+        self.recorder = MediaRecorder(self.recordFile)
+        
         self.pc = RTCPeerConnection()
         pcs.add(self.pc)
 
@@ -87,22 +91,24 @@ class JanusSession:
         # configure media
         media = {"audio": False, "video": False}
         
-        if player and player.audio:
-            self.pc.addTrack(player.audio)
+        if self.player and self.player.audio:
+            self.pc.addTrack(self.player.audio)
             media["audio"] = True
         
-        if player and player.video:
+        if self.player and self.player.video:
             media["video"] = True
-            self.pc.addTrack(player.video)
+            self.pc.addTrack(self.player.video)
         else:
             media["video"] = False
             self.pc.addTrack(VideoStreamTrack())
         
         # send offer
         await self.pc.setLocalDescription(await self.pc.createOffer())
-        request = {"request": "call","uri":cfg["uri"]}
+        #request = {"request": "call","uri":cfg["uri"]}
+        request = {"request": "call","uri":cfg["uri"], "headers": {"x-gamma-gateway": "janus"}}
+
         request.update(media)
-        print(LINE(),"----------> UPDATE MEDIA", media)
+        print(LINE(),"make call update MEDIA", media)
         response = await plugin.send(
             {
                 "body": request,
@@ -115,18 +121,76 @@ class JanusSession:
         )        
         return response
 
-    async def startmedia(self,plugin,data):
-        print(LINE(),"startmedia *******",json.dumps(data, indent=4))
+    async def answercall(self, plugin,data):
+        self.direction = "INBOUND"
+        print(LINE(),"MediaFile", self.playFile)
+        self.player = MediaPlayer(self.playFile)
+        print(LINE(),"record MediaFile", self.recordFile)
+        self.recorder = MediaRecorder(self.recordFile)
         
+        self.pc = RTCPeerConnection()
         await self.pc.setRemoteDescription(
             RTCSessionDescription(
                 sdp=data["jsep"]["sdp"], type=data["jsep"]["type"]
             )
         )
-#        print(LINE(),"startmedia *******")
+        print(LINE(),"answerCall *******")
+        
+        
+        pcs.add(self.pc)
+        
+        @self.pc.on("track")
+        async def on_track(track):
+            print(LINE(),"Track received", track)
+            #if track.kind == "video":
+            #    recorder.addTrack(track)
+            #if track.kind == "audio":
+            #    recorder.addTrack(track)
+        
+        # configure media
+        media = {"audio": False, "video": False}
+
+        if self.player and self.player.audio:
+            self.pc.addTrack(self.player.audio)
+            media["audio"] = True
+        
+        if self.player and self.player.video:
+            media["video"] = True
+            self.pc.addTrack(self.player.video)
+        else:
+            media["video"] = False
+            self.pc.addTrack(VideoStreamTrack())
+        
+        
+        # configure media
+        media = {"audio": True, "video": True}
+        request = {"request": "accept"}
+        request.update(media)
+
+
+        await self.pc.setLocalDescription(await self.pc.createAnswer())
+
+        response = await plugin.send(
+            {
+                "body": request,
+                "jsep": {
+                    "sdp": self.pc.localDescription.sdp,
+                    "trickle": False,
+                    "type": self.pc.localDescription.type,
+                },
+            }
+        )
+ 
+    async def startmedia(self,plugin,data):
+        await self.pc.setRemoteDescription(
+            RTCSessionDescription(
+                sdp=data["jsep"]["sdp"], type=data["jsep"]["type"]
+            )
+        )
+        return
+    
 
     async def register(self,plugin):
-#        print(LINE(),"register *******")
         response = await plugin.send(
             {
                 "body": cfg["register"]
@@ -142,7 +206,6 @@ class JanusSession:
             assert data["janus"] == "success"
             session_id = data["data"]["id"]
             self._session_url = self._root_url + "/" + str(session_id)
-            #print(73,json.dumps(message, indent=4),json.dumps(response, indent=4));
 
         self._poll_task = asyncio.ensure_future(self._poll())
 
@@ -165,35 +228,49 @@ class JanusSession:
     async def _poll(self):
         while True:
             params = {"maxev": 1, "rid": int(time.time() * 1000)}
-#            print(LINE(),"*******","GET wait")
             async with self._http.get(self._session_url, params=params) as response:
                 data = await response.json()
- #               print(LINE(),"*******")
- #               print(LINE(),json.dumps(data, indent=4),data["janus"]);
-
                 if data["janus"] == "event":
                     plugin = self._plugins.get(data["sender"], None)
-  #                  print(LINE(),"*******",plugin)
-                    #event = data["plugindata"]["data"]["result"]["event"]
                     await self.event_fnc(data,plugin)
                         
  
 
 async def eventcall(data,plugin):
-    print(LINE(),"eventcall",data,plugin)
+    print(LINE(),"eventcall",json.dumps(data, indent=4))
     event = data["plugindata"]["data"]["result"]["event"]
+    response = 0
     
     if event == "registered" :
-        response =await session.call(plugin)
-        print(LINE(),"response",response)
+         print(LINE())
+         if session.makeoffer :
+            response =await session.call(plugin)
+            print(LINE(),"response",response)
         
     if event == "progress" :
-        response =await session.startmedia(plugin,data)
- #       print(LINE(),"response",response)
-
+        print(LINE(),"progress",json.dumps(data, indent=4))
+        if "jsep" in data:
+            response =await session.startmedia(plugin,data)
+            print(LINE(),"response",response)
+            
+    if event == "accepted" :
+        print(LINE(),"accepted",json.dumps(data, indent=4))
+        if "jsep" in data:
+            response =await session.startmedia(plugin,data)
+            print(LINE(),"response",response)            
+    
+    if event == "incomingcall" :
+        response =await session.answercall(plugin,data)
+    
+    return response
 
 async def run(player, recorder, session, args):
     await session.create()
+    if args.dir == "OUT" :
+        session.makeoffer = True
+    else:
+        session.makeoffer = False
+        
     # join sip
     plugin = await session.attach("janus.plugin.sip",eventcall)
     
@@ -217,6 +294,7 @@ if __name__ == "__main__":
     parser.add_argument("--record-to", help="Write received media to a file."),
     parser.add_argument("--verbose", "-v", action="count")
     parser.add_argument("--time", "-t", help="max time to run in secs")
+    parser.add_argument("--dir", "-d", help="direction IN/OUT")
     args = parser.parse_args()
 
     if args.verbose:
@@ -224,30 +302,37 @@ if __name__ == "__main__":
 
     # create signaling and peer connection
     session = JanusSession(args.url)
- 
+
+    session.playFile =  args.play_from
+    session.recordFile = "media/in.mp4"
+    
     # create media source
-    if args.play_from:
-        player = MediaPlayer(args.play_from)
-    else:
-        player = None
+#    if args.play_from:
+#        player = MediaPlayer(args.play_from)
+#        print(LINE(),"play file",args.play_from)
+#    else:
+#        player = None
 
     # create media sink
-    if args.record_to:
-        recorder = MediaRecorder(args.record_to)
-    else:
-        recorder = None
+#    if args.record_to:
+#        recorder = MediaRecorder(args.record_to)
+#        print(LINE(),"record file",args.record_to)
+#    else:
+#        recorder = None
 
 
     loop = asyncio.get_event_loop()
     try:
+        player=None
+        recorder=None
         loop.run_until_complete(
             run(player=player, recorder=recorder, session=session,args=args)
         )
     except KeyboardInterrupt:
         pass
     finally:
-        if recorder is not None:
-            loop.run_until_complete(recorder.stop())
+ #       if recorder is not None:
+ #           loop.run_until_complete(recorder.stop())
         loop.run_until_complete(session.destroy())
 
         # close peer connections
